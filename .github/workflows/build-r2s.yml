@@ -14,11 +14,11 @@ on:
       friendlywrt_branch:
         description: 'FriendlyWrt 分支'
         required: true
-        default: 'master-v23.05'
+        default: 'master-v25.12'
         type: choice
         options:
-          - master-v23.05
-          - master-v24.10
+          - master-v25.12
+          - master-v22.03
 
 env:
   WORKDIR: friendlywrt-rk3328
@@ -66,7 +66,7 @@ jobs:
           git clone https://github.com/friendlyarm/repo --depth 1 tools
 
           tools/repo init -u https://github.com/friendlyarm/friendlywrt_manifests \
-            -b ${{ inputs.friendlywrt_branch || 'master-v23.05' }} \
+            -b ${{ inputs.friendlywrt_branch || 'master-v25.12' }} \
             -m rk3328.xml \
             --repo-url=https://github.com/friendlyarm/repo \
             --no-clone-bundle

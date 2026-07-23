@@ -7,7 +7,7 @@
 set -euo pipefail
 
 # ============ 可配置参数 ============
-FRIENDLYWRT_BRANCH="master-v23.05"   # 23.05 稳定版; 也可选 master-v24.10
+FRIENDLYWRT_BRANCH="master-v25.12"   # 25.12 最新版; 也可选 master-v22.03 (旧版稳定)
 WORKDIR="friendlywrt-rk3328"
 PASSWALL_LUCI_REPO="https://github.com/xiaorouji/openwrt-passwall.git"
 PASSWALL_PKG_REPO="https://github.com/xiaorouji/openwrt-passwall-packages.git"
