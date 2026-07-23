@@ -179,6 +179,11 @@ FEEDS
     info "安装 feeds..."
     ./scripts/feeds install -a 2>/dev/null || warn "feeds install 部分失败 (可能无影响)"
 
+    # 移除 feeds 安装的 passwall 包符号链接, 避免与直接克隆的包重复定义
+    rm -rf package/feeds/passwall_packages 2>/dev/null || true
+    rm -rf package/feeds/passwall_luci 2>/dev/null || true
+    rm -rf package/feeds/passwall2_luci 2>/dev/null || true
+
     # 直接克隆 passwall 包到 package 目录 (包含 passwall + passwall2)
     info "克隆 passwall 源码到 package 目录 (含 passwall + passwall2)..."
     if [ ! -d "package/passwall-packages" ]; then

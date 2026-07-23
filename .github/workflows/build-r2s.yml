@@ -112,6 +112,11 @@ jobs:
 
           ./scripts/feeds install -a || true
 
+          # 移除 feeds 安装的 passwall 包符号链接, 避免与直接克隆的包重复定义
+          rm -rf package/feeds/passwall_packages 2>/dev/null || true
+          rm -rf package/feeds/passwall_luci 2>/dev/null || true
+          rm -rf package/feeds/passwall2_luci 2>/dev/null || true
+
           # 直接克隆 passwall 包 (含 passwall + passwall2, 仓库已迁移到 Openwrt-Passwall 组织)
           git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git package/passwall-packages
           git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall.git package/passwall-luci
