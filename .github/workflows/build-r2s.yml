@@ -90,44 +90,18 @@ jobs:
         run: |
           cd ${{ env.WORKDIR }}/friendlywrt
 
-          # 添加 passwall feeds (仓库已迁移到 Openwrt-Passwall 组织)
-          grep -q 'passwall_luci' feeds.conf.default 2>/dev/null || cat >> feeds.conf.default << 'EOF'
-          src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
-          src-git passwall_luci https://github.com/Openwrt-Passwall/openwrt-passwall.git;main
-          src-git passwall2_luci https://github.com/Openwrt-Passwall/openwrt-passwall2.git;main
-          EOF
-
-          # 更新 feeds
-          ./scripts/feeds update -a || true
-
-          # 移除冲突包
-          for pkg in xray-core v2ray-geodata sing-box chinadns-ng dns2socks hysteria \
-              ipt2socks microsocks naiveproxy shadowsocks-libev shadowsocks-rust \
-              shadowsocksr-libev simple-obfs tcping trojan-plus tuic-client \
-              v2ray-plugin xray-plugin geoview shadow-tls; do
-            rm -rf "feeds/packages/net/$pkg" 2>/dev/null || true
-          done
-          rm -rf feeds/luci/applications/luci-app-passwall 2>/dev/null || true
-          rm -rf feeds/luci/applications/luci-app-passwall2 2>/dev/null || true
-
-          ./scripts/feeds install -a || true
-
-          # 移除 feeds 安装的 passwall 包符号链接, 避免与直接克隆的包重复定义
-          rm -rf package/feeds/passwall_packages 2>/dev/null || true
-          rm -rf package/feeds/passwall_luci 2>/dev/null || true
-          rm -rf package/feeds/passwall2_luci 2>/dev/null || true
-
-          # 直接克隆 passwall 包 (含 passwall + passwall2, 仓库已迁移到 Openwrt-Passwall 组织)
+          # 直接克隆 passwall 包到 package 目录 (仓库已迁移到 Openwrt-Passwall 组织)
+          # 不使用 feeds 方式, 避免与 build.sh 的 feeds install -a 产生重复包
           git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git package/passwall-packages
           git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall.git package/passwall-luci
           git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall2.git package/passwall2-luci
 
           echo "passwall + passwall2 集成完成"
+          ls -la package/passwall-*/Makefile package/passwall2-*/Makefile 2>/dev/null || true
 
       # === 安装自定义文件 (uci-defaults 脚本) ===
       - name: Install custom files (uci-defaults)
         run: |
-          # 从仓库的 files/ 目录复制自定义文件到构建树
           if [ -d files ]; then
             echo "安装自定义文件..."
             # 复制到 FriendlyWrt common-files
@@ -142,38 +116,36 @@ jobs:
             echo "::warning::未找到 files/ 目录"
           fi
 
-      # === 配置 ===
-      - name: Configure build
+      # === 编译 uboot/kernel + 生成 .config ===
+      - name: Build uboot/kernel + Generate config
         run: |
-          cd ${{ env.WORKDIR }}/friendlywrt
+          cd ${{ env.WORKDIR }}
 
-          # 查找并使用 RK3328 配置
-          config_file=""
-          for cfg in ../configs/config_rk3328* ../configs/config_*rk3328*; do
-            if [ -f "$cfg" ]; then
-              config_file="$cfg"
-              break
-            fi
-          done
+          # 1. 编译 uboot + kernel, 并生成默认 .config
+          #    build.sh rk3328.mk 流程:
+          #      source rk3328.mk -> install_toolchain -> build_uboot -> build_kernel
+          #      -> build_friendlywrt (feeds update/install + patches + mk-friendlywrt.sh)
+          #      -> build_sdimg
+          #    DEBUG_DOT_CONFIG=1 让 mk-friendlywrt.sh 在 "make defconfig" 后停止, 不编译 friendlywrt
+          #    build_sdimg 会因 rootfs 不存在而失败, 用 || true 忽略
+          echo "=== 编译 uboot + kernel + 生成 .config (DEBUG 模式) ==="
+          DEBUG_DOT_CONFIG=1 ./build.sh rk3328.mk || true
 
-          if [ -z "$config_file" ]; then
-            board_mk=$(find ../device/friendlyelec/rk3328 -name "*.mk" 2>/dev/null | head -1)
-            if [ -n "$board_mk" ]; then
-              config_name=$(grep -oP 'TARGET_FRIENDLYWRT_CONFIG=\K.*' "$board_mk" 2>/dev/null | head -1)
-              if [ -n "$config_name" ] && [ -f "../configs/$config_name" ]; then
-                config_file="../configs/$config_name"
-              fi
-            fi
+          # 2. 检查 .config 是否生成
+          if [ ! -f friendlywrt/.config ]; then
+            echo "::error::.config 未生成, uboot/kernel 构建可能失败"
+            echo "=== configs 目录 ==="
+            ls -la configs/ 2>/dev/null || true
+            echo "=== configs/rockchip 目录 ==="
+            ls -la configs/rockchip/ 2>/dev/null || true
+            exit 1
           fi
 
-          if [ -z "$config_file" ]; then
-            config_file=$(ls ../configs/config_* 2>/dev/null | head -1)
-          fi
+          echo "=== .config 已生成 ==="
+          wc -l friendlywrt/.config
 
-          echo "使用配置: $config_file"
-          cp "$config_file" .config
-
-          # 追加 passwall + passwall2 配置
+          # 3. 追加 passwall + passwall2 配置
+          cd friendlywrt
           cat >> .config << 'EOF'
 
           # ===== Passwall + Passwall2 =====
@@ -185,29 +157,51 @@ jobs:
           CONFIG_PACKAGE_iptables-nft=y
           EOF
 
+          # 4. 让 passwall 配置生效 (处理依赖关系)
           make defconfig
 
-          # 验证
-          grep -q 'CONFIG_PACKAGE_luci-app-passwall=y' .config && echo "passwall 已启用" || echo "::warning::passwall 未找到"
-          grep -q 'CONFIG_PACKAGE_luci-app-passwall2=y' .config && echo "passwall2 已启用" || echo "::warning::passwall2 未找到"
+          # 5. 验证 passwall 是否被正确启用
+          echo "=== 验证 passwall 配置 ==="
+          grep -q 'CONFIG_PACKAGE_luci-app-passwall=y' .config && echo "passwall 已启用" || echo "::warning::passwall 未找到 (可能包定义有问题)"
+          grep -q 'CONFIG_PACKAGE_luci-app-passwall2=y' .config && echo "passwall2 已启用" || echo "::warning::passwall2 未找到 (可能包定义有问题)"
 
-      # === 编译 ===
+          # 6. 删除官方 feeds 中与 passwall 冲突的包符号链接
+          #    build.sh 的 feeds install -a 会安装这些包, 与 passwall-packages 中的版本冲突
+          echo "=== 删除冲突包 ==="
+          for pkg in xray-core v2ray-geodata sing-box chinadns-ng dns2socks hysteria \
+              ipt2socks microsocks naiveproxy shadowsocks-libev shadowsocks-rust \
+              shadowsocksr-libev simple-obfs tcping trojan-plus tuic-client \
+              v2ray-plugin xray-plugin geoview shadow-tls; do
+            rm -rf "package/feeds/packages/$pkg" 2>/dev/null || true
+          done
+          # 删除官方 luci 中的 passwall (如有)
+          rm -rf package/feeds/packages/luci-app-passwall 2>/dev/null || true
+          rm -rf package/feeds/packages/luci-app-passwall2 2>/dev/null || true
+          rm -rf package/feeds/luci/luci-app-passwall 2>/dev/null || true
+          rm -rf package/feeds/luci/luci-app-passwall2 2>/dev/null || true
+
+          echo "配置完成"
+
+      # === 编译 friendlywrt ===
       - name: Build FriendlyWrt
         run: |
-          cd ${{ env.WORKDIR }}
+          cd ${{ env.WORKDIR }}/friendlywrt
 
-          echo "下载源码包..."
-          cd friendlywrt
+          echo "=== 下载源码包 ==="
           make download -j$(nproc) || true
-          cd ..
 
-          echo "编译 FriendlyWrt..."
-          ./build.sh friendlywrt
+          echo "=== 编译 FriendlyWrt ==="
+          make -j$(nproc) || make -j1 V=s
 
-          echo "生成 SD 卡镜像..."
+          echo "=== FriendlyWrt 编译完成 ==="
+
+      # === 生成 SD 卡镜像 ===
+      - name: Generate SD image
+        run: |
+          cd ${{ env.WORKDIR }}
+          echo "=== 生成 SD 卡镜像 ==="
           sudo ./build.sh sd-img
-
-          echo "编译完成"
+          echo "=== SD 卡镜像生成完成 ==="
 
       # === 上传固件 ===
       - name: Upload firmware
