@@ -90,10 +90,11 @@ jobs:
         run: |
           cd ${{ env.WORKDIR }}/friendlywrt
 
-          # 添加 passwall feeds
+          # 添加 passwall feeds (仓库已迁移到 Openwrt-Passwall 组织)
           grep -q 'passwall_luci' feeds.conf.default 2>/dev/null || cat >> feeds.conf.default << 'EOF'
-          src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main
-          src-git passwall_luci https://github.com/xiaorouji/openwrt-passwall.git;main
+          src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
+          src-git passwall_luci https://github.com/Openwrt-Passwall/openwrt-passwall.git;main
+          src-git passwall2_luci https://github.com/Openwrt-Passwall/openwrt-passwall2.git;main
           EOF
 
           # 更新 feeds
@@ -111,9 +112,10 @@ jobs:
 
           ./scripts/feeds install -a || true
 
-          # 直接克隆 passwall 包 (含 passwall + passwall2)
-          git clone --depth 1 -b main https://github.com/xiaorouji/openwrt-passwall-packages.git package/passwall-packages
-          git clone --depth 1 -b main https://github.com/xiaorouji/openwrt-passwall.git package/passwall-luci
+          # 直接克隆 passwall 包 (含 passwall + passwall2, 仓库已迁移到 Openwrt-Passwall 组织)
+          git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git package/passwall-packages
+          git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall.git package/passwall-luci
+          git clone --depth 1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall2.git package/passwall2-luci
 
           echo "passwall + passwall2 集成完成"
 

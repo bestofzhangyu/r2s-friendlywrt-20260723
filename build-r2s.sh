@@ -9,8 +9,9 @@ set -euo pipefail
 # ============ 可配置参数 ============
 FRIENDLYWRT_BRANCH="master-v25.12"   # 25.12 最新版; 也可选 master-v22.03 (旧版稳定)
 WORKDIR="friendlywrt-rk3328"
-PASSWALL_LUCI_REPO="https://github.com/xiaorouji/openwrt-passwall.git"
-PASSWALL_PKG_REPO="https://github.com/xiaorouji/openwrt-passwall-packages.git"
+PASSWALL_LUCI_REPO="https://github.com/Openwrt-Passwall/openwrt-passwall.git"
+PASSWALL_PKG_REPO="https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git"
+PASSWALL2_LUCI_REPO="https://github.com/Openwrt-Passwall/openwrt-passwall2.git"
 PASSWALL_BRANCH="main"
 ENABLE_MENUCONFIG=false               # 设为 true 可在编译前手动配置 (需要终端环境)
 # 脚本所在目录 (用于定位 files/ 等自定义文件)
@@ -151,8 +152,9 @@ integrate_passwall() {
     info "添加 passwall feeds..."
     if ! grep -q "passwall_luci" feeds.conf.default 2>/dev/null; then
         cat >> feeds.conf.default << 'FEEDS'
-src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main
-src-git passwall_luci https://github.com/xiaorouji/openwrt-passwall.git;main
+src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
+src-git passwall_luci https://github.com/Openwrt-Passwall/openwrt-passwall.git;main
+src-git passwall2_luci https://github.com/Openwrt-Passwall/openwrt-passwall2.git;main
 FEEDS
         log "feeds.conf.default 已更新"
     else
@@ -188,6 +190,11 @@ FEEDS
         git clone --depth 1 -b "$PASSWALL_BRANCH" "$PASSWALL_LUCI_REPO" package/passwall-luci
     else
         info "passwall-luci 已存在, 跳过"
+    fi
+    if [ ! -d "package/passwall2-luci" ]; then
+        git clone --depth 1 -b "$PASSWALL_BRANCH" "$PASSWALL2_LUCI_REPO" package/passwall2-luci
+    else
+        info "passwall2-luci 已存在, 跳过"
     fi
 
     cd ..
