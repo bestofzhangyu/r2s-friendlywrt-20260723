@@ -1,0 +1,19 @@
+#!/bin/sh
+# ============================================================
+#  uci-defaults: 解决 Android TV 首次连不上网的问题
+#
+#  原因: Android TV 通过访问 time.android.com 验证网络连通性,
+#        如果该域名无法解析或访问失败, TV 会显示"无法连接网络"
+#
+#  解决: 在 dnsmasq 中添加域名映射, 将 time.android.com 指向
+#        阿里云 NTP 服务器 203.107.6.88
+#
+#  此脚本仅在首次启动时运行一次, 执行后自动删除
+# ============================================================
+
+uci -q add dhcp domain
+uci -q set "dhcp.@domain[-1].name=time.android.com"
+uci -q set "dhcp.@domain[-1].ip=203.107.6.88"
+uci -q commit dhcp
+
+exit 0

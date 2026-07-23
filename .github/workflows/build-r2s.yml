@@ -1,0 +1,223 @@
+# ============================================================
+#  NanoPi R2S FriendlyWrt + passwall + passwall2 — GitHub Actions 云编译
+#  使用方法:
+#    1. 将本项目推送到 GitHub 仓库 (Public 仓库免费)
+#    2. 进入仓库 Actions 页面, 选择 "Build R2S Firmware"
+#    3. 点击 "Run workflow" 手动触发
+#    4. 编译完成后在 Artifacts 中下载固件
+# ============================================================
+name: Build R2S Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      friendlywrt_branch:
+        description: 'FriendlyWrt 分支'
+        required: true
+        default: 'master-v23.05'
+        type: choice
+        options:
+          - master-v23.05
+          - master-v24.10
+
+env:
+  WORKDIR: friendlywrt-rk3328
+
+jobs:
+  build:
+    name: Compile R2S Firmware
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    steps:
+      # === 准备阶段 ===
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          echo "清理磁盘空间..."
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache
+          sudo apt-get clean
+          df -h /
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git config --global http.postBuffer 524288000
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            build-essential subversion git g++ zlib1g-dev \
+            libncurses5-dev gawk gettext unzip file libssl-dev \
+            wget libelf-dev ecj fastjar python3 python3-distutils \
+            curl rsync cpio xxd bison flex qemu-utils
+
+      # === 下载源码 ===
+      - name: Download FriendlyWrt source
+        run: |
+          mkdir -p ${{ env.WORKDIR }}
+          cd ${{ env.WORKDIR }}
+
+          git clone https://github.com/friendlyarm/repo --depth 1 tools
+
+          tools/repo init -u https://github.com/friendlyarm/friendlywrt_manifests \
+            -b ${{ inputs.friendlywrt_branch || 'master-v23.05' }} \
+            -m rk3328.xml \
+            --repo-url=https://github.com/friendlyarm/repo \
+            --no-clone-bundle
+
+          retry=0
+          while ! tools/repo sync -c --no-clone-bundle -j4; do
+            retry=$((retry + 1))
+            echo "同步中断, 第 $retry 次重试..."
+            sleep 5
+            if [ $retry -gt 30 ]; then
+              echo "::error::源码同步失败"
+              exit 1
+            fi
+          done
+
+          echo "源码下载完成"
+          du -sh .
+
+      # === 集成 passwall + passwall2 ===
+      - name: Integrate passwall + passwall2
+        run: |
+          cd ${{ env.WORKDIR }}/friendlywrt
+
+          # 添加 passwall feeds
+          grep -q 'passwall_luci' feeds.conf.default 2>/dev/null || cat >> feeds.conf.default << 'EOF'
+          src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main
+          src-git passwall_luci https://github.com/xiaorouji/openwrt-passwall.git;main
+          EOF
+
+          # 更新 feeds
+          ./scripts/feeds update -a || true
+
+          # 移除冲突包
+          for pkg in xray-core v2ray-geodata sing-box chinadns-ng dns2socks hysteria \
+              ipt2socks microsocks naiveproxy shadowsocks-libev shadowsocks-rust \
+              shadowsocksr-libev simple-obfs tcping trojan-plus tuic-client \
+              v2ray-plugin xray-plugin geoview shadow-tls; do
+            rm -rf "feeds/packages/net/$pkg" 2>/dev/null || true
+          done
+          rm -rf feeds/luci/applications/luci-app-passwall 2>/dev/null || true
+          rm -rf feeds/luci/applications/luci-app-passwall2 2>/dev/null || true
+
+          ./scripts/feeds install -a || true
+
+          # 直接克隆 passwall 包 (含 passwall + passwall2)
+          git clone --depth 1 -b main https://github.com/xiaorouji/openwrt-passwall-packages.git package/passwall-packages
+          git clone --depth 1 -b main https://github.com/xiaorouji/openwrt-passwall.git package/passwall-luci
+
+          echo "passwall + passwall2 集成完成"
+
+      # === 安装自定义文件 (uci-defaults 脚本) ===
+      - name: Install custom files (uci-defaults)
+        run: |
+          # 从仓库的 files/ 目录复制自定义文件到构建树
+          if [ -d files ]; then
+            echo "安装自定义文件..."
+            # 复制到 FriendlyWrt common-files
+            mkdir -p ${{ env.WORKDIR }}/device/friendlyelec/rk3328/common-files
+            cp -r files/* ${{ env.WORKDIR }}/device/friendlyelec/rk3328/common-files/ 2>/dev/null || true
+            # 复制到 OpenWrt files/ (备用)
+            mkdir -p ${{ env.WORKDIR }}/friendlywrt/files
+            cp -r files/* ${{ env.WORKDIR }}/friendlywrt/files/ 2>/dev/null || true
+            echo "已安装的自定义文件:"
+            find files -type f -exec echo "  /{}" \;
+          else
+            echo "::warning::未找到 files/ 目录"
+          fi
+
+      # === 配置 ===
+      - name: Configure build
+        run: |
+          cd ${{ env.WORKDIR }}/friendlywrt
+
+          # 查找并使用 RK3328 配置
+          config_file=""
+          for cfg in ../configs/config_rk3328* ../configs/config_*rk3328*; do
+            if [ -f "$cfg" ]; then
+              config_file="$cfg"
+              break
+            fi
+          done
+
+          if [ -z "$config_file" ]; then
+            board_mk=$(find ../device/friendlyelec/rk3328 -name "*.mk" 2>/dev/null | head -1)
+            if [ -n "$board_mk" ]; then
+              config_name=$(grep -oP 'TARGET_FRIENDLYWRT_CONFIG=\K.*' "$board_mk" 2>/dev/null | head -1)
+              if [ -n "$config_name" ] && [ -f "../configs/$config_name" ]; then
+                config_file="../configs/$config_name"
+              fi
+            fi
+          fi
+
+          if [ -z "$config_file" ]; then
+            config_file=$(ls ../configs/config_* 2>/dev/null | head -1)
+          fi
+
+          echo "使用配置: $config_file"
+          cp "$config_file" .config
+
+          # 追加 passwall + passwall2 配置
+          cat >> .config << 'EOF'
+
+          # ===== Passwall + Passwall2 =====
+          CONFIG_PACKAGE_luci-app-passwall=y
+          CONFIG_PACKAGE_luci-app-passwall2=y
+
+          # ===== 常用网络工具 =====
+          CONFIG_PACKAGE_luci-app-upnp=y
+          CONFIG_PACKAGE_iptables-nft=y
+          EOF
+
+          make defconfig
+
+          # 验证
+          grep -q 'CONFIG_PACKAGE_luci-app-passwall=y' .config && echo "passwall 已启用" || echo "::warning::passwall 未找到"
+          grep -q 'CONFIG_PACKAGE_luci-app-passwall2=y' .config && echo "passwall2 已启用" || echo "::warning::passwall2 未找到"
+
+      # === 编译 ===
+      - name: Build FriendlyWrt
+        run: |
+          cd ${{ env.WORKDIR }}
+
+          echo "下载源码包..."
+          cd friendlywrt
+          make download -j$(nproc) || true
+          cd ..
+
+          echo "编译 FriendlyWrt..."
+          ./build.sh friendlywrt
+
+          echo "生成 SD 卡镜像..."
+          sudo ./build.sh sd-img
+
+          echo "编译完成"
+
+      # === 上传固件 ===
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2s-friendlywrt-passwall
+          path: |
+            ${{ env.WORKDIR }}/out/*.img
+            ${{ env.WORKDIR }}/out/*.img.gz
+          retention-days: 30
+          compression-level: 0
+
+      - name: Show image info
+        if: always()
+        run: |
+          echo "=== 镜像文件 ==="
+          ls -lh ${{ env.WORKDIR }}/out/*.img* 2>/dev/null || echo "未找到镜像文件"
+          echo ""
+          echo "=== 磁盘使用 ==="
+          df -h /
