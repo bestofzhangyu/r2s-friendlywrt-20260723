@@ -115,6 +115,17 @@ jobs:
         run: |
           cd ${{ env.WORKDIR }}
 
+          # === 启用 CONFIG_NETLINK_DIAG (sing-box 依赖 kmod-netlink-diag) ===
+          echo "启用 CONFIG_NETLINK_DIAG=m 到 x86 内核配置..."
+          find target/linux/x86/ -name "config-*" -type f | while read cfg; do
+            if ! grep -q "CONFIG_NETLINK_DIAG" "$cfg"; then
+              echo "CONFIG_NETLINK_DIAG=m" >> "$cfg"
+              echo "  已添加: $cfg"
+            else
+              echo "  已存在: $cfg"
+            fi
+          done
+
           # 第一次 defconfig: 生成默认 x86_64 配置
           make defconfig
 
@@ -155,6 +166,7 @@ jobs:
           CONFIG_PACKAGE_kmod-fs-ext4=y
           CONFIG_PACKAGE_kmod-usb-storage=y
           CONFIG_PACKAGE_kmod-usb-hid=y
+          CONFIG_PACKAGE_kmod-netlink-diag=y
           PWCONF
 
           # 第二次 defconfig: 让 passwall 依赖生效
