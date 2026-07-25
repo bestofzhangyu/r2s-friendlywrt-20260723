@@ -1,0 +1,69 @@
+#!/bin/sh
+# ============================================================
+#  uci-defaults: 自动配置多网卡网络
+#
+#  第1个网卡(eth0) = WAN (PPPoE 拨号, 账号需在后台填写)
+#  其余网卡        = LAN (全部桥接到 br-lan)
+#  LAN 地址        = 192.168.100.1
+#  DHCP 范围       = 192.168.100.100 - 192.168.100.249
+#
+#  注意: 网卡顺序由内核枚举决定, 不一定对应物理网口位置。
+#        如果 WAN 口不是你想要的那张网卡, 进后台在
+#        网络 -> 接口 -> WAN 中修改设备即可。
+# ============================================================
+
+# 获取所有物理网卡 (eth0, eth1, ...) 并排序
+nics=$(ls /sys/class/net/ 2>/dev/null | grep -E '^eth[0-9]+$' | sort)
+nic_count=$(echo "$nics" | grep -c .)
+
+# 至少需要 2 张网卡才配置, 否则保持默认
+[ "$nic_count" -lt 2 ] && exit 0
+
+wan_if=$(echo "$nics" | head -1)
+
+echo "[network-config] 检测到 $nic_count 张网卡: $nics"
+echo "[network-config] WAN = $wan_if"
+
+# === 清理默认 br-lan bridge device ===
+uci -q delete network.br_lan
+
+# === 创建 LAN bridge (除 WAN 外所有网卡桥接) ===
+uci -q set network.br_lan=device
+uci -q set network.br_lan.type='bridge'
+uci -q set network.br_lan.name='br-lan'
+for nic in $(echo "$nics" | tail -n +2); do
+    uci -q add_list network.br_lan.ports="$nic"
+    echo "[network-config] LAN bridge 添加端口: $nic"
+done
+
+# === 配置 LAN 接口 ===
+uci -q set network.lan.device='br-lan'
+uci -q set network.lan.proto='static'
+uci -q set network.lan.ipaddr='192.168.100.1'
+uci -q set network.lan.netmask='255.255.255.0'
+
+# === 配置 WAN (PPPoE 拨号, 账号密码留空由用户在后台填写) ===
+uci -q delete network.wan
+uci -q set network.wan=interface
+uci -q set network.wan.proto='pppoe'
+uci -q set network.wan.device="$wan_if"
+uci -q set network.wan.ipv6='auto'
+# 宽带账号密码需在 LuCI 后台: 网络 -> 接口 -> WAN -> 编辑 中填写
+
+# === 配置 WAN6 (IPv6 over PPPoE) ===
+uci -q delete network.wan6
+uci -q set network.wan6=interface
+uci -q set network.wan6.device='@wan'
+uci -q set network.wan6.proto='dhcpv6'
+
+# === DHCP 配置 ===
+uci -q set dhcp.lan.start='100'
+uci -q set dhcp.lan.limit='150'
+uci -q set dhcp.lan.leasetime='12h'
+
+uci -q commit network
+uci -q commit dhcp
+
+echo "[network-config] 配置完成: LAN=192.168.100.1, WAN=$wan_if(PPPoE)"
+
+exit 0
