@@ -1,10 +1,19 @@
 #!/bin/sh
 # ============================================================
-#  uci-defaults: 设置 LuCI 界面为中文
+#  uci-defaults: 设置 LuCI 界面为中文 + Argon 主题 + 时区
 # ============================================================
 
 # 设置 LuCI 默认语言为简体中文
 uci -q set luci.main.lang='zh_cn'
+
+# 设置 Argon 主题为默认 (如果已安装)
+if [ -d /usr/lib/lua/luci/view/themes/argon ] || [ -d /www/luci-static/argon ]; then
+    uci -q set luci.main.mediaurlbase='/luci-static/argon'
+    echo "[zh-cn] 主题已设置为 Argon"
+else
+    echo "[zh-cn] Argon 主题未安装, 保持默认主题"
+fi
+
 uci -q commit luci
 
 # 设置系统时区为东八区
