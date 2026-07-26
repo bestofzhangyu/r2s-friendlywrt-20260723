@@ -157,9 +157,21 @@ jobs:
           CONFIG_PACKAGE_luci-app-passwall=y
           CONFIG_PACKAGE_luci-app-passwall2=y
 
-          # ===== 常用网络工具 =====
+          # ===== 核心基础服务 (确保 LuCI Web 界面可用) =====
+          CONFIG_PACKAGE_uhttpd=y
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-mod-system=y
+          CONFIG_PACKAGE_luci-mod-network=y
+          CONFIG_PACKAGE_luci-mod-status=y
+          CONFIG_PACKAGE_luci-base=y
+          CONFIG_PACKAGE_dropbear=y
+          CONFIG_PACKAGE_firewall4=y
+          CONFIG_PACKAGE_dnsmasq=y
+          CONFIG_PACKAGE_luci-app-ddns=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
           CONFIG_PACKAGE_luci-app-upnp=y
           CONFIG_PACKAGE_iptables-nft=y
+          CONFIG_PACKAGE_nftables=y
 
           # ===== x86 常用驱动 (虚拟机 + 物理机) =====
           CONFIG_PACKAGE_kmod-virtio-pci=y
