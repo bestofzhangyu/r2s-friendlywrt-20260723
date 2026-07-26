@@ -107,10 +107,12 @@ jobs:
             echo "安装自定义文件..."
             # 复制到 FriendlyWrt common-files
             mkdir -p ${{ env.WORKDIR }}/device/friendlyelec/rk3328/common-files
-            cp -r files/* ${{ env.WORKDIR }}/device/friendlyelec/rk3328/common-files/ 2>/dev/null || true
+            cp -r files/*
+            chmod +x ${{ env.WORKDIR }}/files/etc/uci-defaults/* 2>/dev/null || true ${{ env.WORKDIR }}/device/friendlyelec/rk3328/common-files/ 2>/dev/null || true
             # 复制到 OpenWrt files/ (备用)
             mkdir -p ${{ env.WORKDIR }}/friendlywrt/files
-            cp -r files/* ${{ env.WORKDIR }}/friendlywrt/files/ 2>/dev/null || true
+            cp -r files/*
+            chmod +x ${{ env.WORKDIR }}/files/etc/uci-defaults/* 2>/dev/null || true ${{ env.WORKDIR }}/friendlywrt/files/ 2>/dev/null || true
             echo "已安装的自定义文件:"
             find files -type f -exec echo "  /{}" \;
           else
