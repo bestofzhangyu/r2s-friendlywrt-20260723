@@ -233,7 +233,6 @@ jobs:
           sed -i 's/^CONFIG_PACKAGE_luci-app-sqm=y/CONFIG_PACKAGE_luci-app-sqm=n/' .config
           sed -i 's/^CONFIG_PACKAGE_luci-app-statistics=y/CONFIG_PACKAGE_luci-app-statistics=n/' .config
           sed -i 's/^CONFIG_PACKAGE_luci-app-watchcat=y/CONFIG_PACKAGE_luci-app-watchcat=n/' .config
-          sed -i 's/^CONFIG_PACKAGE_luci-app-package-manager=y/CONFIG_PACKAGE_luci-app-package-manager=n/' .config
 
           # === 关闭重量级服务包 (非代理类, 纯粹节省编译时间) ===
           sed -i 's/^CONFIG_PACKAGE_samba4=y/CONFIG_PACKAGE_samba4=n/' .config
