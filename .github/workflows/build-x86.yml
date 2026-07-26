@@ -104,8 +104,12 @@ jobs:
             echo "安装自定义文件..."
             mkdir -p ${{ env.WORKDIR }}/files
             cp -r files/* ${{ env.WORKDIR }}/files/
+            # 确保 uci-defaults 脚本有执行权限
+            chmod +x ${{ env.WORKDIR }}/files/etc/uci-defaults/* 2>/dev/null || true
             echo "已安装的自定义文件:"
             find files -type f -exec echo "  /{}" \;
+            echo "uci-defaults 权限检查:"
+            ls -la ${{ env.WORKDIR }}/files/etc/uci-defaults/ 2>/dev/null || true
           else
             echo "::warning::未找到 files/ 目录"
           fi
