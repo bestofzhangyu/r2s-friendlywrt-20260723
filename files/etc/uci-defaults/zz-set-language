@@ -1,0 +1,18 @@
+#!/bin/sh
+# ============================================================
+#  uci-defaults: 设置 LuCI 界面为中文
+# ============================================================
+
+# 设置 LuCI 默认语言为简体中文
+uci -q set luci.main.lang='zh_cn'
+uci -q commit luci
+
+# 设置系统时区为东八区
+uci -q set system.@system[0].timezone='CST-8'
+uci -q set system.@system[0].zonename='Asia/Shanghai'
+uci -q commit system
+
+echo "[zh-cn] LuCI 语言已设置为简体中文"
+echo "[zh-cn] 系统时区已设置为 Asia/Shanghai (CST-8)"
+
+exit 0
